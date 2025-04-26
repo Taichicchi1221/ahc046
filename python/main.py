@@ -57,6 +57,7 @@ class State:
         self.N = N
         # False: empty, True: has block
         self.grid = [[False] * N for _ in range(N)]
+        self.start = start
         self.pos = start
         self.coords = coords
         self.actions: List[Tuple[str, str]] = []
@@ -134,6 +135,24 @@ class State:
         return M + 2 * N * M - len(self.actions)
 
 
+def recall_steps(
+    state: State,
+) -> List["State"]:
+    """
+    Recall the steps taken in the past and return a list of State objects.
+    """
+    st = State(
+        state.N,
+        state.start,
+        state.coords,
+    )
+    steps = [st]
+    for act, dir in state.actions:
+        st.apply_action(act, dir)
+        steps.append(copy.deepcopy(st))
+    return steps
+
+
 # -------------------- BFS helper --------------------
 def bfs_shortest(
     grid: List[List[bool]],
@@ -190,39 +209,34 @@ def bfs_shortest(
     return None
 
 
-# -------------------- main routine (greedy baseline) --------------------
-
-
 def main():
-    time_keeper = TimeKeeper(timeout=1.8)
+    time_keeper1 = TimeKeeper(timeout=0.6)
+    time_keeper2 = TimeKeeper(timeout=1.2)
+    time_keeper3 = TimeKeeper(timeout=1.8)
 
     input()  # skip
     start = tuple(map(int, input().split()))
     coords = [tuple(map(int, input().split())) for _ in range(M - 1)]
 
     state = State(N, start, coords)
-
-    steps = []
     while not state.is_done():
         tgt = state.target
-        # handle already at target
         if state.pos == tgt:
             state._visited += 1
             continue
-
         path = bfs_shortest(state.grid, state.N, state.pos, tgt)
         if path is None:
-            break  # unreachable
-        for act, dir in path:
-            state.apply_action(act, dir)
-            steps.append(copy.deepcopy(state))
+            break
+        for act, d in path:
+            state.apply_action(act, d)
             if len(state.actions) >= MAX_ACTIONS:
                 break
-        if len(state.actions) >= MAX_ACTIONS:
-            break
 
+    steps = recall_steps(state)
+
+    # d = 1
     states = [state]
-    while not time_keeper.is_timeout():
+    while not time_keeper1.is_timeout():
         dir = random.choice(DIR_KEYS)
         step = random.randint(0, len(steps) - 1)
         state = copy.deepcopy(steps[step])
@@ -247,10 +261,71 @@ def main():
                     break
             states.append(state)
 
-    # Choose the best state among state1, state2, state3, state4, state5
     best_state = max(states, key=lambda s: s.calculate_score())
+    steps = recall_steps(best_state)
+
+    # d = 2
+    states = [best_state]
+    while not time_keeper2.is_timeout():
+        dir = random.choice(DIR_KEYS)
+        step = random.randint(0, len(steps) - 1)
+        state = copy.deepcopy(steps[step])
+
+        if state.can_apply("A", dir):
+            state.apply_action("A", dir)
+            while not state.is_done():
+                tgt = state.target
+                # handle already at target
+                if state.pos == tgt:
+                    state._visited += 1
+                    continue
+
+                path = bfs_shortest(state.grid, state.N, state.pos, tgt)
+                if path is None:
+                    break  # unreachable
+                for act, dir in path:
+                    state.apply_action(act, dir)
+                    if len(state.actions) >= MAX_ACTIONS:
+                        break
+                if len(state.actions) >= MAX_ACTIONS:
+                    break
+            states.append(state)
+
+    best_state = max(states, key=lambda s: s.calculate_score())
+    steps = recall_steps(best_state)
+
+    # d = 3
+    states = [best_state]
+    while not time_keeper3.is_timeout():
+        dir = random.choice(DIR_KEYS)
+        step = random.randint(0, len(steps) - 1)
+        state = copy.deepcopy(steps[step])
+
+        if state.can_apply("A", dir):
+            state.apply_action("A", dir)
+            while not state.is_done():
+                tgt = state.target
+                # handle already at target
+                if state.pos == tgt:
+                    state._visited += 1
+                    continue
+
+                path = bfs_shortest(state.grid, state.N, state.pos, tgt)
+                if path is None:
+                    break  # unreachable
+                for act, dir in path:
+                    state.apply_action(act, dir)
+                    if len(state.actions) >= MAX_ACTIONS:
+                        break
+                if len(state.actions) >= MAX_ACTIONS:
+                    break
+            states.append(state)
+
+    best_state = max(states, key=lambda s: s.calculate_score())
+
     score = best_state.calculate_score()
 
+    # 出力
     print(f"score {score}", file=sys.stderr)
     best_state.output_actions()
 
