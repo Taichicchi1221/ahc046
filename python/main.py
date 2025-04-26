@@ -2,7 +2,9 @@
 # created: 26.04.2025 15:00:00
 
 import copy
+import random
 import sys
+import time
 from collections import deque
 from typing import List, Optional, Tuple
 
@@ -13,6 +15,23 @@ MAX_ACTIONS = 1600
 DIRS = {"U": (-1, 0), "D": (1, 0), "L": (0, -1), "R": (0, 1)}
 DIR_KEYS = list(DIRS)  # deterministic order
 INF = 10**9
+
+
+random.seed(42)
+
+# -------------------- time keeper --------------------
+
+
+class TimeKeeper:
+    def __init__(self, timeout: float = 1.5):
+        self.start_time = time.perf_counter()
+        self.timeout = timeout
+
+    def elapsed_time(self):
+        return time.perf_counter() - self.start_time
+
+    def is_timeout(self):
+        return self.elapsed_time() > self.timeout
 
 
 # -------------------- State class --------------------
@@ -117,7 +136,10 @@ class State:
 
 # -------------------- BFS helper --------------------
 def bfs_shortest(
-    grid: List[List[bool]], N: int, start: Tuple[int, int], target: Tuple[int, int]
+    grid: List[List[bool]],
+    N: int,
+    start: Tuple[int, int],
+    target: Tuple[int, int],
 ) -> Optional[List[Tuple[str, str]]]:
     """Find shortest sequence of (act, dir) using only M and S from start to target."""
     if start == target:
@@ -172,50 +194,16 @@ def bfs_shortest(
 
 
 def main():
+    time_keeper = TimeKeeper(timeout=1.8)
+
     input()  # skip
     start = tuple(map(int, input().split()))
     coords = [tuple(map(int, input().split())) for _ in range(M - 1)]
 
     state = State(N, start, coords)
 
-    state1 = proc(copy.deepcopy(state))
-
-    state2 = copy.deepcopy(state)
-    if state2.can_apply("A", "U"):
-        state2.apply_action("A", "U")
-    state2 = proc(state2)
-
-    state3 = copy.deepcopy(state)
-    if state3.can_apply("A", "D"):
-        state3.apply_action("A", "D")
-    state3 = proc(state3)
-
-    state4 = copy.deepcopy(state)
-    if state4.can_apply("A", "L"):
-        state4.apply_action("A", "L")
-    state4 = proc(state4)
-
-    state5 = copy.deepcopy(state)
-    if state5.can_apply("A", "R"):
-        state5.apply_action("A", "R")
-    state5 = proc(state5)
-
-    # Choose the best state among state1, state2, state3, state4, state5
-    candidates = [state1, state2, state3, state4, state5]
-    best_state = max(candidates, key=lambda s: s.calculate_score())
-    state = best_state
-
-    score = state.calculate_score()
-
-    print(f"score {score}", file=sys.stderr)
-    state.output_actions()
-
-
-def proc(state: State) -> None:
-    # for each destination, find and apply shortest M/S path
-    for _ in range(len(state.coords)):
-        if state.is_done():
-            break
+    steps = []
+    while not state.is_done():
         tgt = state.target
         # handle already at target
         if state.pos == tgt:
@@ -227,12 +215,44 @@ def proc(state: State) -> None:
             break  # unreachable
         for act, dir in path:
             state.apply_action(act, dir)
+            steps.append(copy.deepcopy(state))
             if len(state.actions) >= MAX_ACTIONS:
                 break
         if len(state.actions) >= MAX_ACTIONS:
             break
 
-    return state
+    states = [state]
+    while not time_keeper.is_timeout():
+        dir = random.choice(DIR_KEYS)
+        step = random.randint(0, len(steps) - 1)
+        state = copy.deepcopy(steps[step])
+
+        if state.can_apply("A", dir):
+            state.apply_action("A", dir)
+            while not state.is_done():
+                tgt = state.target
+                # handle already at target
+                if state.pos == tgt:
+                    state._visited += 1
+                    continue
+
+                path = bfs_shortest(state.grid, state.N, state.pos, tgt)
+                if path is None:
+                    break  # unreachable
+                for act, dir in path:
+                    state.apply_action(act, dir)
+                    if len(state.actions) >= MAX_ACTIONS:
+                        break
+                if len(state.actions) >= MAX_ACTIONS:
+                    break
+            states.append(state)
+
+    # Choose the best state among state1, state2, state3, state4, state5
+    best_state = max(states, key=lambda s: s.calculate_score())
+    score = best_state.calculate_score()
+
+    print(f"score {score}", file=sys.stderr)
+    best_state.output_actions()
 
 
 if __name__ == "__main__":
