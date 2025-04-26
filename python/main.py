@@ -114,73 +114,57 @@ class State:
         return M + 2 * N * M - len(self.actions)
 
 
-# -------------------- path‑finder --------------------
-
-
-def shortest_actions(state: State) -> List[Tuple[str, str]]:
-    """Return shortest (act,dir) sequence from current pos to state.target using only M/S."""
-    if state.target is None:
+# -------------------- BFS helper --------------------
+def bfs_shortest(
+    grid: List[List[bool]], N: int, start: Tuple[int, int], target: Tuple[int, int]
+) -> Optional[List[Tuple[str, str]]]:
+    """Find shortest sequence of (act, dir) using only M and S from start to target."""
+    if start == target:
         return []
-
-    N = state.N
-    gx, gy = state.target
-    sx, sy = state.pos
-
-    # slide only
-    for d in DIR_KEYS:
-        i, j = sx, sy
-        while True:
-            ni, nj = i + DIRS[d][0], j + DIRS[d][1]
-            if not (0 <= ni < N and 0 <= nj < N) or state.grid[ni][nj]:
-                break
-            i, j = ni, nj
-        if (i, j) == (gx, gy):
-            return [("S", d)]
-
-    # dist[i][j][k]: min steps to (i,j) with last_is_move==k(0: S, 1: M)
-    dist = [[[INF] * 2 for _ in range(N)] for _ in range(N)]
-    par = [[[(None, None, None, None)] * 2 for _ in range(N)] for _ in range(N)]
+    visited = [[False] * N for _ in range(N)]
+    prev = {}  # (i,j) -> ((pi,pj), act, dir)
     dq = deque()
-    dist[sx][sy][1] = 0
-    dq.append((sx, sy, 1))
+    visited[start[0]][start[1]] = True
+    dq.append(start)
 
     while dq:
-        x, y, lm = dq.popleft()
-        if (x, y) == (gx, gy) and lm == 1:
-            break
-        # explore four dirs
-        for d in DIR_KEYS:
-            dx, dy = DIRS[d]
-            # Move M
-            nx, ny = x + dx, y + dy
-            if 0 <= nx < N and 0 <= ny < N and not state.grid[nx][ny] and dist[nx][ny][1] == INF:
-                dist[nx][ny][1] = dist[x][y][lm] + 1
-                par[nx][ny][1] = (x, y, lm, "M", d)
-                dq.append((nx, ny, 1))
-            # Slide S
-            sx2, sy2 = x, y
-            while True:
-                tx, ty = sx2 + dx, sy2 + dy
-                if not (0 <= tx < N and 0 <= ty < N) or state.grid[tx][ty]:
-                    break
-                sx2, sy2 = tx, ty
-            if dist[sx2][sy2][0] == INF:
-                dist[sx2][sy2][0] = dist[x][y][lm] + 1
-                par[sx2][sy2][0] = (x, y, lm, "S", d)
-                dq.append((sx2, sy2, 0))
-
-    if dist[gx][gy][1] == INF:
-        raise RuntimeError("No path found with M/S only (should not happen)")
-
-    # reconstruct
-    actions: List[Tuple[str, str]] = []
-    x, y, lm = gx, gy, 1
-    while (x, y, lm) != (sx, sy, 1):
-        px, py, plm, act, dir_ = par[x][y][lm]
-        actions.append((act, dir_))
-        x, y, lm = px, py, plm
-    actions.reverse()
-    return actions
+        ci, cj = dq.popleft()
+        # try both actions
+        for act in ("M", "S"):
+            for dir in DIR_KEYS:
+                di, dj = DIRS[dir]
+                if act == "M":
+                    ni, nj = ci + di, cj + dj
+                    if not (0 <= ni < N and 0 <= nj < N):
+                        continue
+                    if grid[ni][nj]:
+                        continue
+                else:  # act == "S"
+                    # slide until boundary or block
+                    ni, nj = ci, cj
+                    while True:
+                        ti, tj = ni + di, nj + dj
+                        if not (0 <= ti < N and 0 <= tj < N):
+                            break
+                        if grid[ti][tj]:
+                            break
+                        ni, nj = ti, tj
+                if (ni, nj) == (ci, cj):
+                    continue  # zero-length slide
+                if not visited[ni][nj]:
+                    visited[ni][nj] = True
+                    prev[(ni, nj)] = ((ci, cj), act, dir)
+                    if (ni, nj) == target:
+                        # reconstruct path
+                        path = []
+                        cur = (ni, nj)
+                        while cur != start:
+                            p, a, d = prev[cur]
+                            path.append((a, d))
+                            cur = p
+                        return list(reversed(path))
+                    dq.append((ni, nj))
+    return None
 
 
 # -------------------- main routine (greedy baseline) --------------------
@@ -191,17 +175,31 @@ def main():
     start = tuple(map(int, input().split()))
     coords = [tuple(map(int, input().split())) for _ in range(M - 1)]
 
-    st = State(N, start, coords)
+    state = State(N, start, coords)
 
-    while not st.is_done():
-        seq = shortest_actions(st)
-        for act, dir_ in seq:
-            st.apply_action(act, dir_)
+    # for each destination, find and apply shortest M/S path
+    for _ in range(len(coords)):
+        if state.is_done():
+            break
+        tgt = state.target
+        # handle already at target
+        if state.pos == tgt:
+            state._visited += 1
+            continue
 
+        path = bfs_shortest(state.grid, state.N, state.pos, tgt)
+        if path is None:
+            break  # unreachable
+        for act, dir in path:
+            state.apply_action(act, dir)
+            if len(state.actions) >= MAX_ACTIONS:
+                break
+        if len(state.actions) >= MAX_ACTIONS:
+            break
     # 出力
-    st.output_actions()
+    state.output_actions()
 
-    score = st.calculate_score()
+    score = state.calculate_score()
     print(f"score {score}", file=sys.stderr)
 
 
