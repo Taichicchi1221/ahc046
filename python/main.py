@@ -1,10 +1,12 @@
 # author:  Taichicchi
 # created: 26.04.2025 15:00:00
 
+import copy
 import sys
 
 N = 20
 M = 40
+MAX_ACTIONS = 1600
 
 
 class State:
@@ -89,6 +91,9 @@ class State:
 
         self.actions.append((act, dir))
 
+    def is_done(self) -> bool:
+        return self.visited == len(self.coords)
+
     def output_actions(self):
         """
         行動履歴を出力する
@@ -108,31 +113,64 @@ class State:
             return M + 2 * N * M - T
 
 
+def greedy_next_target(state: State) -> tuple[str, str]:
+    nti, ntj = state.coords[state.visited]
+
+    if state.pos == (nti, ntj):
+        if state.can_apply("M", "U"):
+            state.apply_action("M", "U")
+            state.apply_action("M", "D")
+        elif state.can_apply("M", "D"):
+            state.apply_action("M", "D")
+            state.apply_action("M", "U")
+        elif state.can_apply("M", "L"):
+            state.apply_action("M", "L")
+            state.apply_action("M", "R")
+        elif state.can_apply("M", "R"):
+            state.apply_action("M", "R")
+            state.apply_action("M", "L")
+        else:
+            raise ValueError("Invalid state: already at target")
+
+    while state.pos != (nti, ntj):
+        ci, cj = state.pos
+        if ci < nti:
+            d = "D"
+        elif ci > nti:
+            d = "U"
+        elif cj < ntj:
+            d = "R"
+        elif cj > ntj:
+            d = "L"
+
+        state.apply_action("M", d)
+
+
 def main():
     input()  # 読み飛ばし
-
     start = tuple(map(int, input().split()))
     coords = [tuple(map(int, input().split())) for _ in range(M - 1)]
-
     state = State(N, start, coords)
 
-    # M（移動）のみで目的地を順番に回る
-    for ti, tj in coords:
-        # 現在地が目的地と一致するまで1マスずつ移動
-        while state.pos != (ti, tj):
-            ci, cj = state.pos
-            if ci < ti:
-                dir = "D"
-            elif ci > ti:
-                dir = "U"
-            elif cj < tj:
-                dir = "R"
-            else:
-                dir = "L"
+    while not state.is_done():
+        now_state = copy.deepcopy(state)
+        greedy_next_target(now_state)
 
-            # State クラスで状態更新＆行動履歴に記録
-            state.apply_action("M", dir)
+        best_turn = len(now_state.actions)
+        best_state = now_state
 
+        for d in ("U", "D", "L", "R"):
+            now_state = copy.deepcopy(state)
+            now_state.apply_action("S", d)
+            greedy_next_target(now_state)
+            if len(now_state.actions) < best_turn:
+                best_turn = len(now_state.actions)
+                best_state = now_state
+        state = best_state
+
+        print(f"state.visited: {state.visited}, actions: {len(state.actions)}", file=sys.stderr)
+
+    # 出力
     state.output_actions()
     score = state.calculate_score()
     print(f"score {score}", file=sys.stderr)
