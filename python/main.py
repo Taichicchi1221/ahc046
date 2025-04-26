@@ -1,6 +1,7 @@
 # author:  Taichicchi
 # created: 26.04.2025 15:00:00
 
+import copy
 import sys
 from collections import deque
 from typing import List, Optional, Tuple
@@ -171,14 +172,48 @@ def bfs_shortest(
 
 
 def main():
-    N, M = map(int, input().split())
+    input()  # skip
     start = tuple(map(int, input().split()))
     coords = [tuple(map(int, input().split())) for _ in range(M - 1)]
 
     state = State(N, start, coords)
 
+    state1 = proc(copy.deepcopy(state))
+
+    state2 = copy.deepcopy(state)
+    if state2.can_apply("A", "U"):
+        state2.apply_action("A", "U")
+    state2 = proc(state2)
+
+    state3 = copy.deepcopy(state)
+    if state3.can_apply("A", "D"):
+        state3.apply_action("A", "D")
+    state3 = proc(state3)
+
+    state4 = copy.deepcopy(state)
+    if state4.can_apply("A", "L"):
+        state4.apply_action("A", "L")
+    state4 = proc(state4)
+
+    state5 = copy.deepcopy(state)
+    if state5.can_apply("A", "R"):
+        state5.apply_action("A", "R")
+    state5 = proc(state5)
+
+    # Choose the best state among state1, state2, state3, state4, state5
+    candidates = [state1, state2, state3, state4, state5]
+    best_state = max(candidates, key=lambda s: s.calculate_score())
+    state = best_state
+
+    score = state.calculate_score()
+
+    print(f"score {score}", file=sys.stderr)
+    state.output_actions()
+
+
+def proc(state: State) -> None:
     # for each destination, find and apply shortest M/S path
-    for _ in range(len(coords)):
+    for _ in range(len(state.coords)):
         if state.is_done():
             break
         tgt = state.target
@@ -196,11 +231,8 @@ def main():
                 break
         if len(state.actions) >= MAX_ACTIONS:
             break
-    # 出力
-    state.output_actions()
 
-    score = state.calculate_score()
-    print(f"score {score}", file=sys.stderr)
+    return state
 
 
 if __name__ == "__main__":
